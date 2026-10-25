@@ -41,7 +41,7 @@ const storage = multer.diskStorage({
 });
 const upload = multer({ storage: storage });
 
-// Dinamik baseURL (Həm kompüterdə localhost, həm də Render-də internet linki üçün avtomatik işləyir)
+// Dinamik baseURL
 const baseURL = process.env.RENDER_EXTERNAL_URL || "http://localhost:3000";
 
 // Passport Google Strategy
@@ -63,7 +63,7 @@ passport.deserializeUser((user, done) => {
     done(null, user);
 });
 
-// Ana səhifə birbaşa Spotify interfeysini açır
+// Ana səhifə
 app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
@@ -73,7 +73,7 @@ app.get('/auth/google',
     passport.authenticate('google', { scope: ['profile', 'email'] })
 );
 
-// Google Callback - Qeydiyyat və Giriş izləmə sistemi
+// Google Callback
 app.get('/auth/google/callback', 
     passport.authenticate('google', { failureRedirect: '/' }),
     (req, res) => {
@@ -92,29 +92,17 @@ app.get('/auth/google/callback',
                 }
             }
 
-            // Bu e-poçt daha əvvəl qeydiyyatdan keçibmi?
             const isRegisteredBefore = history.some(item => item.email === userEmail && item.status === 'Qeydiyyat');
-            
-            // Əgər əvvəl yoxdursa "Qeydiyyat", varsa "Giriş" yazırıq
             const status = isRegisteredBefore ? 'Giriş' : 'Qeydiyyat';
 
             history.push({
                 name: userName,
                 email: userEmail,
-                status: status, // Qeydiyyat və ya Giriş
+                status: status,
                 time: now
             });
 
-            // Fayla yazırıq
             fs.writeFileSync(historyFilePath, JSON.stringify(history, null, 2));
-
-            // Terminalda səliqəli şəkildə göstəririk
-            console.log(`\n================ SİSTEM HADİSƏSİ ===============`);
-            console.log(`Status : ${status.toUpperCase()}`);
-            console.log(`Ad     : ${userName}`);
-            console.log(`Email  : ${userEmail}`);
-            console.log(`Vaxt   : ${now}`);
-            console.log(`=================================================\n`);
         }
 
         res.redirect('/');
@@ -144,42 +132,84 @@ app.get('/current-user', (req, res) => {
     }
 });
 
-// Mahnı yükləmək - Kateqoriya dəstəyi ilə (Yalnız qurbanovq100000@gmail.com üçün qorunur)
+// Mahnı yükləmək - Kateqoriyanı yoxlayan versiya
 app.post('/upload', upload.single('song'), (req, res) => {
     const userEmail = req.isAuthenticated() && req.user.emails && req.user.emails[0].value;
     const isOwner = userEmail === 'qurbanovq100000@gmail.com';
 
     if (!isOwner) {
-        return res.status(403).send('İcazəniz yoxdur! Bu panel yalnız Qurban üçündür.');
+        return res.status(403).json({ error: 'İcazəniz yoxdur!' });
     }
     
     if (!req.file) {
-        return res.status(400).send('Fayl yüklənmədi!');
+        return res.status(400).json({ error: 'Fayl yüklənmədi!' });
     }
 
-    const category = req.body.category || 'All';
+    // Gələn məlumatları terminalda yoxlayaq
+    console.log("REQ.BODY:", req.body);
 
-    io.emit('newSong', {
-        name: req.file.originalname,
-        url: `/uploads/${req.file.filename}`,
+    const category = req.body.category || 'All';
+    console.log(`Fayl adı: ${req.file.originalname} | Seçilən Kateqoriya: ${category}`);
+
+    const originalName = req.file.originalname;
+    const fileUrl = `/uploads/${req.file.filename}`;
+
+    const metaFilePath = path.join(__dirname, 'songs_meta.json');
+    let songsMeta = [];
+    if (fs.existsSync(metaFilePath)) {
+        try {
+            songsMeta = JSON.parse(fs.readFileSync(metaFilePath, 'utf8'));
+        } catch (e) {
+            songsMeta = [];
+        }
+    }
+
+    songsMeta = songsMeta.filter(m => m.filename !== req.file.filename);
+
+    songsMeta.push({
+        filename: req.file.filename,
+        name: originalName,
+        url: fileUrl,
         category: category
     });
-    res.redirect('/');
+
+    fs.writeFileSync(metaFilePath, JSON.stringify(songsMeta, null, 2));
+
+    io.emit('newSong', {
+        name: originalName,
+        url: fileUrl,
+        category: category
+    });
+    
+    res.json({ success: true, name: originalName, url: fileUrl, category: category });
 });
 
-// Mahnı siyahısı (Kateqoriya məlumatı ilə birlikdə)
+// Mahnı siyahısı
 app.get('/songs', (req, res) => {
     fs.readdir('./uploads', (err, files) => {
         if (err) {
             return res.json([]);
         }
+
+        const metaFilePath = path.join(__dirname, 'songs_meta.json');
+        let songsMeta = [];
+        if (fs.existsSync(metaFilePath)) {
+            try {
+                songsMeta = JSON.parse(fs.readFileSync(metaFilePath, 'utf8'));
+            } catch (e) {
+                songsMeta = [];
+            }
+        }
+
         const songList = files.map(file => {
+            const meta = songsMeta.find(m => m.filename === file);
             return {
                 name: file.substring(file.indexOf('-') + 1),
                 url: `/uploads/${file}`,
-                category: 'All' // Əgər köhnə yüklənənlər varsa 'All' götürülür
+                category: meta ? meta.category : 'All'
             };
         });
+        
         res.json(songList);
     });
 });
@@ -197,7 +227,7 @@ io.on('connection', (socket) => {
     socket.on('disconnect', () => {});
 });
 
-// Dinamik port tənzimləməsi (Render və ya localhost üçün)
+// Dinamik port tənzimləməsi
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
     console.log(`Server işləyir: port ${PORT}`);

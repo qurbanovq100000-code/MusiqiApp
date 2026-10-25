@@ -19,7 +19,7 @@
                 <li><a href="#">Kitabxana</a></li>
             </ul>
             
-            <!-- PWA Quraşdırma Düyməsi (Əvvəlcə gizlidir, brauzer icazə verəndə görünəcək) -->
+            <!-- PWA Quraşdırma Düyməsi -->
             <div style="margin-top: 30px; padding: 0 10px;">
                 <button id="installBtn" style="display: none; width: 100%; padding: 12px; background-color: #1db954; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; font-size: 14px; box-shadow: 0 4px 10px rgba(0,0,0,0.3);">📱 Tətbiqi Quraşdır</button>
             </div>
@@ -33,10 +33,10 @@
             </header>
             
             <div class="content-body">
-                <!-- Mahnı Yükləmə Formu (Yalnız Admin üçündür, Kateqoriya seçimi ilə) -->
+                <!-- Mahnı Yükləmə Formu (Səhifəni yeniləməyən AJAX form) -->
                 <div id="upload-section" class="upload-section" style="display: none;">
                     <h3>Kompüterdən Mahnı Yüklə (Admin Panel)</h3>
-                    <form action="/upload" method="POST" enctype="multipart/form-data" class="upload-form">
+                    <form id="upload-form" class="upload-form">
                         <input type="file" name="song" accept="audio/*" required>
                         <select name="category" class="category-select">
                             <option value="Fast">Fast</option>
@@ -98,6 +98,7 @@
     <script>
         let allSongs = [];
         let likedSongs = JSON.parse(localStorage.getItem('likedSongs')) || [];
+        let currentSelectedCategory = 'All';
 
         fetch('/current-user')
             .then(res => res.json())
@@ -121,12 +122,17 @@
                 }
             });
 
-        fetch('/songs')
-            .then(res => res.json())
-            .then(songs => {
-                allSongs = songs;
-                renderSongs(allSongs);
-            });
+        // Mahnıları serverdən çəkirik
+        function loadSongs() {
+            fetch('/songs')
+                .then(res => res.json())
+                .then(songs => {
+                    allSongs = songs;
+                    filterSongs(currentSelectedCategory);
+                });
+        }
+
+        loadSongs();
 
         function renderSongs(songsToRender) {
             const list = document.getElementById('song-list');
@@ -152,7 +158,18 @@
         }
 
         function filterSongs(category) {
+            currentSelectedCategory = category;
             document.getElementById('section-title').innerText = category === 'All' ? 'Mövcud Musiqilər' : `${category} Kateqoriyası`;
+            
+            // Düymələrin aktiv görünüşünü idarə edirik
+            document.querySelectorAll('.filter-bar button').forEach(btn => {
+                if(btn.innerText.trim() === category) {
+                    btn.classList.add('active');
+                } else {
+                    btn.classList.remove('active');
+                }
+            });
+
             if (category === 'All') {
                 renderSongs(allSongs);
             } else {
@@ -162,6 +179,7 @@
         }
 
         function showLikedSongs() {
+            currentSelectedCategory = 'Liked';
             document.getElementById('section-title').innerText = 'Bəyənilən Musiqilər ❤️';
             renderSongs(likedSongs);
         }
@@ -174,7 +192,12 @@
                 likedSongs.push({ name, url, category });
             }
             localStorage.setItem('likedSongs', JSON.stringify(likedSongs));
-            renderSongs(allSongs);
+            
+            if(currentSelectedCategory === 'Liked') {
+                renderSongs(likedSongs);
+            } else {
+                filterSongs(currentSelectedCategory);
+            }
         }
 
         function playSong(url, name) {
@@ -185,7 +208,26 @@
             title.innerText = name;
         }
 
-        // PWA Quraşdırma Məntiqi (Install App)
+        // Səhifəni yeniləmədən AJAX vasitəsilə mahnı yükləmə
+        document.getElementById('upload-form').addEventListener('submit', function(e) {
+            e.preventDefault();
+            const formData = new FormData(this);
+
+            fetch('/upload', {
+                method: 'POST',
+                body: formData
+            })
+            .then(res => {
+                if (res.ok) {
+                    this.reset(); // Formu təmizləyirik
+                } else {
+                    alert('Yükləmək üçün icazəniz yoxdur və ya xəta baş verdi!');
+                }
+            })
+            .catch(err => console.error(err));
+        });
+
+        // PWA Quraşdırma Məntiqi
         let deferredPrompt;
         const installBtn = document.getElementById('installBtn');
 
@@ -210,10 +252,14 @@
             });
         }
 
+        // Real-time Socket.io dinləyicisi
         const socket = io();
         socket.on('newSong', (data) => {
             allSongs.push(data);
-            renderSongs(allSongs);
+            // Yeni mahnı gələndə cari seçilmiş kateqoriyanı yeniləyirik
+            if (currentSelectedCategory === 'All' || data.category === currentSelectedCategory) {
+                filterSongs(currentSelectedCategory);
+            }
         });
     </script>
 </body>
