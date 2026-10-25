@@ -4,6 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>MusiqiApp - Spotify Style</title>
+    <!-- PWA üçün manifest əlaqəsi -->
+    <link rel="manifest" href="/manifest.json">
     <link rel="stylesheet" href="/style.css">
 </head>
 <body>
@@ -16,6 +18,11 @@
                 <li><a href="#" onclick="showLikedSongs()">❤️ Bəyənilənlər</a></li>
                 <li><a href="#">Kitabxana</a></li>
             </ul>
+            
+            <!-- PWA Quraşdırma Düyməsi (Əvvəlcə gizlidir, brauzer icazə verəndə görünəcək) -->
+            <div style="margin-top: 30px; padding: 0 10px;">
+                <button id="installBtn" style="display: none; width: 100%; padding: 12px; background-color: #1db954; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; font-size: 14px; box-shadow: 0 4px 10px rgba(0,0,0,0.3);">📱 Tətbiqi Quraşdır</button>
+            </div>
         </div>
 
         <!-- Əsas Mərkəzi Hissə -->
@@ -104,14 +111,11 @@
                     authContainer.innerHTML = `<a href="/logout" class="logout-btn">Çıxış</a>`;
                     
                     if (data.isAdmin) {
-                        // Əgər sənsənsə (qurbanovq100000@gmail.com), admin paneli göstərilir
                         uploadSection.style.display = 'block';
                     } else {
-                        // Başqa hesabla girilibsə, admin paneli səhifədən tamamilə silinir
                         uploadSection.remove();
                     }
                 } else {
-                    // Giriş edilməyibsə, yalnız giriş düyməsi görünür və yükləmə paneli silinir
                     authContainer.innerHTML = `<a href="/auth/google" class="logout-btn" style="background-color: #1db954; color: #fff;">Admin Girişi</a>`;
                     uploadSection.remove();
                 }
@@ -165,12 +169,12 @@
         function toggleLike(name, url, category) {
             const index = likedSongs.findIndex(s => s.url === url);
             if (index > -1) {
-                likedSongs.splice(index, 1); // Əgər bəyənilibsə sil
+                likedSongs.splice(index, 1);
             } else {
-                likedSongs.push({ name, url, category }); // Bəyənilənlərə əlavə et
+                likedSongs.push({ name, url, category });
             }
             localStorage.setItem('likedSongs', JSON.stringify(likedSongs));
-            renderSongs(allSongs); // Siyahını yenilə
+            renderSongs(allSongs);
         }
 
         function playSong(url, name) {
@@ -179,6 +183,31 @@
             player.src = url;
             player.play();
             title.innerText = name;
+        }
+
+        // PWA Quraşdırma Məntiqi (Install App)
+        let deferredPrompt;
+        const installBtn = document.getElementById('installBtn');
+
+        window.addEventListener('beforeinstallprompt', (e) => {
+            e.preventDefault();
+            deferredPrompt = e;
+            if (installBtn) {
+                installBtn.style.display = 'block';
+            }
+        });
+
+        if (installBtn) {
+            installBtn.addEventListener('click', async () => {
+                if (!deferredPrompt) return;
+                deferredPrompt.prompt();
+                const { outcome } = await deferredPrompt.userChoice;
+                if (outcome === 'accepted') {
+                    console.log('İstifadəçi tətbiqi quraşdırdı');
+                }
+                deferredPrompt = null;
+                installBtn.style.display = 'none';
+            });
         }
 
         const socket = io();
