@@ -22,9 +22,16 @@ app.use(session({
 app.use(passport.initialize());
 app.use(passport.session());
 
-// Statik fayllar
-app.use(express.static(path.join(__dirname, 'public')));
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+// Giriş yoxlamaq üçün funksiya (Middleware)
+function ensureLoggedIn(req, res, next) {
+    if (req.isAuthenticated()) {
+        return next();
+    }
+    res.redirect('/auth/google');
+}
+
+// Statik fayllar (Giriş edənlər üçün qorunur)
+app.use('/uploads', ensureLoggedIn, express.static(path.join(__dirname, 'uploads')));
 
 if (!fs.existsSync('./uploads')) {
     fs.mkdirSync('./uploads');
@@ -63,10 +70,13 @@ passport.deserializeUser((user, done) => {
     done(null, user);
 });
 
-// Ana səhifə
-app.get('/', (req, res) => {
+// Ana səhifə - İndi yalnız giriş edənlər görə bilər!
+app.get('/', ensureLoggedIn, (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
+
+// Digər bütün public faylları da qoruya bilərik və ya index.html daxilindəki scriptləri açıq saxlaya bilərik
+app.use(express.static(path.join(__dirname, 'public')));
 
 // Google Giriş
 app.get('/auth/google',
@@ -132,9 +142,9 @@ app.get('/current-user', (req, res) => {
     }
 });
 
-// Mahnı yükləmək - Kateqoriyanı yoxlayan versiya
-app.post('/upload', upload.single('song'), (req, res) => {
-    const userEmail = req.isAuthenticated() && req.user.emails && req.user.emails[0].value;
+// Mahnı yükləmək - Yalnız Sənin (Admin) üçündür
+app.post('/upload', ensureLoggedIn, upload.single('song'), (req, res) => {
+    const userEmail = req.user.emails && req.user.emails[0].value;
     const isOwner = userEmail === 'qurbanovq100000@gmail.com';
 
     if (!isOwner) {
@@ -145,12 +155,7 @@ app.post('/upload', upload.single('song'), (req, res) => {
         return res.status(400).json({ error: 'Fayl yüklənmədi!' });
     }
 
-    // Gələn məlumatları terminalda yoxlayaq
-    console.log("REQ.BODY:", req.body);
-
     const category = req.body.category || 'All';
-    console.log(`Fayl adı: ${req.file.originalname} | Seçilən Kateqoriya: ${category}`);
-
     const originalName = req.file.originalname;
     const fileUrl = `/uploads/${req.file.filename}`;
 
@@ -184,8 +189,8 @@ app.post('/upload', upload.single('song'), (req, res) => {
     res.json({ success: true, name: originalName, url: fileUrl, category: category });
 });
 
-// Mahnı siyahısı
-app.get('/songs', (req, res) => {
+// Mahnı siyahısı (Yalnız daxil olanlar görə bilər)
+app.get('/songs', ensureLoggedIn, (req, res) => {
     fs.readdir('./uploads', (err, files) => {
         if (err) {
             return res.json([]);
