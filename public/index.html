@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="az">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MusiqiApp - Spotify Style</title>
+    <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Sol Menyu -->
+        <div class="sidebar">
+            <h2>🎵 MusiqiApp</h2>
+            <ul>
+                <li><a href="#" onclick="filterSongs('All')" class="active">Ana Səhifə</a></li>
+                <li><a href="#" onclick="showLikedSongs()">❤️ Bəyənilənlər</a></li>
+                <li><a href="#">Kitabxana</a></li>
+            </ul>
+        </div>
+
+        <!-- Əsas Mərkəzi Hissə -->
+        <div class="main-content">
+            <header>
+                <h1 id="welcome-text">Xoş gəldiniz!</h1>
+                <div id="auth-container"></div>
+            </header>
+            
+            <div class="content-body">
+                <!-- Mahnı Yükləmə Formu (Yalnız Admin üçündür, Kateqoriya seçimi ilə) -->
+                <div id="upload-section" class="upload-section" style="display: none;">
+                    <h3>Kompüterdən Mahnı Yüklə (Admin Panel)</h3>
+                    <form action="/upload" method="POST" enctype="multipart/form-data" class="upload-form">
+                        <input type="file" name="song" accept="audio/*" required>
+                        <select name="category" class="category-select">
+                            <option value="Fast">Fast</option>
+                            <option value="Pop">Pop</option>
+                            <option value="Sad">Sad</option>
+                            <option value="Beats">Beats</option>
+                            <option value="Rap">Rap</option>
+                            <option value="Calm">Calm</option>
+                            <option value="Motivation">Motivation</option>
+                            <option value="Love">Love</option>
+                            <option value="Folk">Folk</option>
+                            <option value="Dance">Dance</option>
+                            <option value="Gaming">Gaming</option>
+                            <option value="Dark">Dark</option>
+                            <option value="Slow">Slow</option>
+                            <option value="Chill">Chill</option>
+                        </select>
+                        <button type="submit">Yüklə</button>
+                    </form>
+                </div>
+
+                <!-- Şəkildəki Kateqoriya Düymələri -->
+                <div class="filter-bar">
+                    <button onclick="filterSongs('All')" class="filter-btn active">All</button>
+                    <button onclick="filterSongs('Fast')" class="filter-btn">Fast</button>
+                    <button onclick="filterSongs('Pop')" class="filter-btn">Pop</button>
+                    <button onclick="filterSongs('Sad')" class="filter-btn">Sad</button>
+                    <button onclick="filterSongs('Beats')" class="filter-btn">Beats</button>
+                    <button onclick="filterSongs('Rap')" class="filter-btn">Rap</button>
+                    <button onclick="filterSongs('Calm')" class="filter-btn">Calm</button>
+                    <button onclick="filterSongs('Motivation')" class="filter-btn">Motivation</button>
+                    <button onclick="filterSongs('Love')" class="filter-btn">Love</button>
+                    <button onclick="filterSongs('Folk')" class="filter-btn">Folk</button>
+                    <button onclick="filterSongs('Dance')" class="filter-btn">Dance</button>
+                    <button onclick="filterSongs('Gaming')" class="filter-btn">Gaming</button>
+                    <button onclick="filterSongs('Dark')" class="filter-btn">Dark</button>
+                    <button onclick="filterSongs('Slow')" class="filter-btn">Slow</button>
+                    <button onclick="filterSongs('Chill')" class="filter-btn">Chill</button>
+                </div>
+
+                <h3 id="section-title" style="margin-top: 30px;">Mövcud Musiqilər</h3>
+                <ul id="song-list" class="song-list"></ul>
+            </div>
+        </div>
+    </div>
+
+    <!-- Aşağıdakı Musiqi Pleyeri -->
+    <div class="player-bar">
+        <div class="song-info">
+            <h4 id="current-song-title">Musiqi seçilməyib</h4>
+            <p>MusiqiApp Player</p>
+        </div>
+        <div class="player-controls">
+            <audio id="audio-player" controls style="width: 300px; accent-color: #1db954;"></audio>
+        </div>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        let allSongs = [];
+        let likedSongs = JSON.parse(localStorage.getItem('likedSongs')) || [];
+
+        fetch('/current-user')
+            .then(res => res.json())
+            .then(data => {
+                const authContainer = document.getElementById('auth-container');
+                const uploadSection = document.getElementById('upload-section');
+                const welcomeText = document.getElementById('welcome-text');
+
+                if (data.loggedIn) {
+                    welcomeText.innerText = `Xoş gəldiniz, ${data.displayName}!`;
+                    authContainer.innerHTML = `<a href="/logout" class="logout-btn">Çıxış</a>`;
+                    
+                    if (data.isAdmin) {
+                        // Əgər sənsənsə (qurbanovq100000@gmail.com), admin paneli göstərilir
+                        uploadSection.style.display = 'block';
+                    } else {
+                        // Başqa hesabla girilibsə, admin paneli səhifədən tamamilə silinir
+                        uploadSection.remove();
+                    }
+                } else {
+                    // Giriş edilməyibsə, yalnız giriş düyməsi görünür və yükləmə paneli silinir
+                    authContainer.innerHTML = `<a href="/auth/google" class="logout-btn" style="background-color: #1db954; color: #fff;">Admin Girişi</a>`;
+                    uploadSection.remove();
+                }
+            });
+
+        fetch('/songs')
+            .then(res => res.json())
+            .then(songs => {
+                allSongs = songs;
+                renderSongs(allSongs);
+            });
+
+        function renderSongs(songsToRender) {
+            const list = document.getElementById('song-list');
+            list.innerHTML = '';
+            
+            if (songsToRender.length === 0) {
+                list.innerHTML = '<p style="color: #b3b3b3; padding: 10px;">Heç bir musiqi tapılmadı.</p>';
+                return;
+            }
+
+            songsToRender.forEach(song => {
+                const isLiked = likedSongs.some(s => s.url === song.url);
+                const li = document.createElement('li');
+                li.innerHTML = `
+                    <span>🎵 ${song.name} <small style="color: #1db954; margin-left: 10px;">[${song.category || 'All'}]</small></span>
+                    <div>
+                        <button class="like-btn" onclick="toggleLike('${song.name.replace(/'/g, "\\'")}', '${song.url}', '${song.category || 'All'}')">${isLiked ? '❤️' : '🤍'}</button>
+                        <button onclick="playSong('${song.url}', '${song.name.replace(/'/g, "\\'")}')">Dinlə</button>
+                    </div>
+                `;
+                list.appendChild(li);
+            });
+        }
+
+        function filterSongs(category) {
+            document.getElementById('section-title').innerText = category === 'All' ? 'Mövcud Musiqilər' : `${category} Kateqoriyası`;
+            if (category === 'All') {
+                renderSongs(allSongs);
+            } else {
+                const filtered = allSongs.filter(song => song.category === category);
+                renderSongs(filtered);
+            }
+        }
+
+        function showLikedSongs() {
+            document.getElementById('section-title').innerText = 'Bəyənilən Musiqilər ❤️';
+            renderSongs(likedSongs);
+        }
+
+        function toggleLike(name, url, category) {
+            const index = likedSongs.findIndex(s => s.url === url);
+            if (index > -1) {
+                likedSongs.splice(index, 1); // Əgər bəyənilibsə sil
+            } else {
+                likedSongs.push({ name, url, category }); // Bəyənilənlərə əlavə et
+            }
+            localStorage.setItem('likedSongs', JSON.stringify(likedSongs));
+            renderSongs(allSongs); // Siyahını yenilə
+        }
+
+        function playSong(url, name) {
+            const player = document.getElementById('audio-player');
+            const title = document.getElementById('current-song-title');
+            player.src = url;
+            player.play();
+            title.innerText = name;
+        }
+
+        const socket = io();
+        socket.on('newSong', (data) => {
+            allSongs.push(data);
+            renderSongs(allSongs);
+        });
+    </script>
+</body>
+</html>
