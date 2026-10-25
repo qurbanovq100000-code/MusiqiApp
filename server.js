@@ -75,7 +75,7 @@ app.get('/', ensureLoggedIn, (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-// Digər bütün public faylları da qoruya bilərik və ya index.html daxilindəki scriptləri açıq saxlaya bilərik
+// Digər bütün public faylları açıq saxlayırıq
 app.use(express.static(path.join(__dirname, 'public')));
 
 // Google Giriş
@@ -83,7 +83,7 @@ app.get('/auth/google',
     passport.authenticate('google', { scope: ['profile', 'email'] })
 );
 
-// Google Callback
+// Google Callback - Giriş edənləri həm fayla, həm də Render Logs ekranına yazır
 app.get('/auth/google/callback', 
     passport.authenticate('google', { failureRedirect: '/' }),
     (req, res) => {
@@ -91,6 +91,10 @@ app.get('/auth/google/callback',
             const userName = req.user.displayName;
             const userEmail = req.user.emails && req.user.emails[0].value;
             const now = new Date().toLocaleString();
+            
+            // Render Logs ekranında dərhal görmək üçün:
+            console.log(`>>> UĞURLU GİRİŞ: ${userName} (${userEmail}) - Vaxt: ${now}`);
+
             const historyFilePath = path.join(__dirname, 'users_history.json');
 
             let history = [];
